@@ -246,6 +246,29 @@ def test_save_path_cannot_be_used_when_report_saving_is_disabled(monkeypatch):
     assert calls == []
 
 
+@pytest.mark.parametrize(
+    ("args", "expected_error"),
+    [
+        (["--no-save-report"], "--no-save-report requires --non-interactive"),
+        (["--no-display-report"], "--no-display-report requires --non-interactive"),
+        (["--save-path", "reports/spy"], "--save-path requires --non-interactive"),
+    ],
+)
+def test_report_control_options_require_non_interactive(args, expected_error, monkeypatch):
+    calls = []
+
+    def fake_run_analysis(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(cli_main, "run_analysis", fake_run_analysis)
+
+    result = runner.invoke(cli_main.app, args)
+
+    assert result.exit_code != 0
+    assert expected_error in result.output
+    assert calls == []
+
+
 def test_clear_checkpoints_waits_for_valid_non_interactive_args(monkeypatch):
     cleared_paths = []
     analysis_calls = []

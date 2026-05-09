@@ -1387,6 +1387,15 @@ def analyze(
     if save_path is not None and not save_report:
         raise typer.BadParameter("--save-path cannot be used with --no-save-report.")
 
+    if not non_interactive and not save_report:
+        raise typer.BadParameter("--no-save-report requires --non-interactive.")
+
+    if not non_interactive and not display_report:
+        raise typer.BadParameter("--no-display-report requires --non-interactive.")
+
+    if not non_interactive and save_path is not None:
+        raise typer.BadParameter("--save-path requires --non-interactive.")
+
     selections = None
     if non_interactive:
         try:
