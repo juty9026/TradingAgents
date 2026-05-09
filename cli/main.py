@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Sequence
 import datetime
 import typer
 from pathlib import Path
@@ -38,6 +38,109 @@ app = typer.Typer(
     help="TradingAgents CLI: Multi-Agents LLM Financial Trading Framework",
     add_completion=True,  # Enable shell completion
 )
+
+DEFAULT_ANALYST_TEAM = [
+    AnalystType.MARKET,
+    AnalystType.SOCIAL,
+    AnalystType.NEWS,
+    AnalystType.FUNDAMENTALS,
+]
+
+RESEARCH_DEPTH_ALIASES = {
+    "shallow": 1,
+    "1": 1,
+    "medium": 3,
+    "3": 3,
+    "deep": 5,
+    "5": 5,
+}
+
+
+def _parse_research_depth(value: str | int | None) -> int:
+    raw_value = "shallow" if value is None else str(value).strip().lower()
+    if raw_value not in RESEARCH_DEPTH_ALIASES:
+        allowed = "shallow, medium, deep, 1, 3, 5"
+        raise ValueError(f"Invalid research depth: {value}. Allowed values: {allowed}.")
+    return RESEARCH_DEPTH_ALIASES[raw_value]
+
+
+def _parse_analysts(value: str | None) -> list[AnalystType]:
+    if value is None or not value.strip():
+        return DEFAULT_ANALYST_TEAM.copy()
+
+    requested = [part.strip().lower() for part in value.split(",") if part.strip()]
+    if not requested:
+        return DEFAULT_ANALYST_TEAM.copy()
+
+    valid_values = {analyst.value for analyst in DEFAULT_ANALYST_TEAM}
+    invalid_values = sorted(set(requested) - valid_values)
+    if invalid_values:
+        allowed = ", ".join(analyst.value for analyst in DEFAULT_ANALYST_TEAM)
+        invalid = ", ".join(invalid_values)
+        raise ValueError(f"Invalid analysts: {invalid}. Allowed values: {allowed}.")
+
+    requested_values = set(requested)
+    return [analyst for analyst in DEFAULT_ANALYST_TEAM if analyst.value in requested_values]
+
+
+def _parse_analysis_date(
+    value: str | None,
+    *,
+    today: datetime.date | None = None,
+) -> str:
+    effective_today = today or datetime.date.today()
+    if value is None or not value.strip():
+        return effective_today.isoformat()
+
+    try:
+        parsed_date = datetime.datetime.strptime(value, "%Y-%m-%d").date()
+    except ValueError as exc:
+        raise ValueError(
+            f"Invalid analysis date: {value}. Expected format: YYYY-MM-DD."
+        ) from exc
+
+    if parsed_date > effective_today:
+        raise ValueError("Analysis date cannot be in the future.")
+
+    return parsed_date.isoformat()
+
+
+def build_non_interactive_selections(
+    *,
+    ticker: str | None,
+    analysis_date: str | None,
+    analysts: str | None,
+    research_depth: str | int | None,
+    today: datetime.date | None = None,
+) -> dict[str, str | int | Sequence[AnalystType] | None]:
+    if ticker is None or not ticker.strip():
+        raise ValueError("--ticker is required when --non-interactive is used.")
+
+    return {
+        "ticker": ticker.strip().upper(),
+        "analysis_date": _parse_analysis_date(analysis_date, today=today),
+        "analysts": _parse_analysts(analysts),
+        "research_depth": _parse_research_depth(research_depth),
+        "llm_provider": DEFAULT_CONFIG["llm_provider"],
+        "backend_url": DEFAULT_CONFIG.get("backend_url"),
+        "shallow_thinker": DEFAULT_CONFIG["quick_think_llm"],
+        "deep_thinker": DEFAULT_CONFIG["deep_think_llm"],
+        "openai_reasoning_effort": DEFAULT_CONFIG.get("openai_reasoning_effort"),
+        "output_language": DEFAULT_CONFIG["output_language"],
+    }
+
+
+def _resolve_report_save_path(
+    ticker: str,
+    save_path: Path | str | None,
+    now: datetime.datetime | None = None,
+) -> Path:
+    if save_path is not None:
+        return Path(save_path)
+
+    effective_now = now or datetime.datetime.now()
+    timestamp = effective_now.strftime("%Y%m%d_%H%M%S")
+    return Path.cwd() / "reports" / f"{ticker}_{timestamp}"
 
 
 # Create a deque to store recent messages with a maximum length
@@ -926,9 +1029,17 @@ def format_tool_args(args, max_length=80) -> str:
         return result[:max_length - 3] + "..."
     return result
 
-def run_analysis(checkpoint: bool = False):
+def run_analysis(
+    checkpoint: bool = False,
+    selections=None,
+    non_interactive: bool = False,
+    save_report: bool = True,
+    display_report: bool = True,
+    save_path: Path | None = None,
+):
     # First get all user selections
-    selections = get_user_selections()
+    if selections is None:
+        selections = get_user_selections()
 
     # Create config with selected research depth
     config = DEFAULT_CONFIG.copy()
@@ -1174,19 +1285,42 @@ def run_analysis(checkpoint: bool = False):
     # Post-analysis prompts (outside Live context for clean interaction)
     console.print("\n[bold cyan]Analysis Complete![/bold cyan]\n")
 
+    if non_interactive:
+        if save_report:
+            report_save_path = _resolve_report_save_path(
+                selections["ticker"],
+                save_path,
+            )
+            try:
+                report_file = save_report_to_disk(
+                    final_state,
+                    selections["ticker"],
+                    report_save_path,
+                )
+                console.print(
+                    f"\n[green]✓ Report saved to:[/green] {report_save_path.resolve()}"
+                )
+                console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
+            except Exception as e:
+                console.print(f"[red]Error saving report: {e}[/red]")
+
+        if display_report:
+            display_complete_report(final_state)
+
+        return
+
     # Prompt to save report
     save_choice = typer.prompt("Save report?", default="Y").strip().upper()
     if save_choice in ("Y", "YES", ""):
-        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-        default_path = Path.cwd() / "reports" / f"{selections['ticker']}_{timestamp}"
+        default_path = _resolve_report_save_path(selections["ticker"], None)
         save_path_str = typer.prompt(
             "Save path (press Enter for default)",
             default=str(default_path)
         ).strip()
-        save_path = Path(save_path_str)
+        report_save_path = Path(save_path_str)
         try:
-            report_file = save_report_to_disk(final_state, selections["ticker"], save_path)
-            console.print(f"\n[green]✓ Report saved to:[/green] {save_path.resolve()}")
+            report_file = save_report_to_disk(final_state, selections["ticker"], report_save_path)
+            console.print(f"\n[green]✓ Report saved to:[/green] {report_save_path.resolve()}")
             console.print(f"  [dim]Complete report:[/dim] {report_file.name}")
         except Exception as e:
             console.print(f"[red]Error saving report: {e}[/red]")
@@ -1209,12 +1343,75 @@ def analyze(
         "--clear-checkpoints",
         help="Delete all saved checkpoints before running (force fresh start).",
     ),
+    non_interactive: bool = typer.Option(
+        False,
+        "--non-interactive",
+        help="Run without prompts using safe defaults and command-line overrides.",
+    ),
+    ticker: Optional[str] = typer.Option(
+        None,
+        "--ticker",
+        help="Ticker to analyze. Required with --non-interactive. Example: SPY.",
+    ),
+    analysis_date: Optional[str] = typer.Option(
+        None,
+        "--analysis-date",
+        help="Analysis date in YYYY-MM-DD format. Defaults to today's date in non-interactive mode.",
+    ),
+    analysts: Optional[str] = typer.Option(
+        None,
+        "--analysts",
+        help="Comma-separated analysts for non-interactive mode: market,social,news,fundamentals.",
+    ),
+    research_depth: Optional[str] = typer.Option(
+        None,
+        "--research-depth",
+        help="Research depth for non-interactive mode: shallow, medium, deep, 1, 3, or 5. Defaults to shallow.",
+    ),
+    save_report: bool = typer.Option(
+        True,
+        "--save-report/--no-save-report",
+        help="Save the final report after analysis. Defaults to saving.",
+    ),
+    display_report: bool = typer.Option(
+        True,
+        "--display-report/--no-display-report",
+        help="Display the full final report after analysis. Defaults to displaying.",
+    ),
+    save_path: Optional[Path] = typer.Option(
+        None,
+        "--save-path",
+        help="Directory for saved reports. Defaults to ./reports/{ticker}_{timestamp}.",
+    ),
 ):
     if clear_checkpoints:
         from tradingagents.graph.checkpointer import clear_all_checkpoints
         n = clear_all_checkpoints(DEFAULT_CONFIG["data_cache_dir"])
         console.print(f"[yellow]Cleared {n} checkpoint(s).[/yellow]")
-    run_analysis(checkpoint=checkpoint)
+
+    if save_path is not None and not save_report:
+        raise typer.BadParameter("--save-path cannot be used with --no-save-report.")
+
+    selections = None
+    if non_interactive:
+        try:
+            selections = build_non_interactive_selections(
+                ticker=ticker,
+                analysis_date=analysis_date,
+                analysts=analysts,
+                research_depth=research_depth,
+            )
+        except ValueError as exc:
+            raise typer.BadParameter(str(exc)) from exc
+
+    run_analysis(
+        checkpoint=checkpoint,
+        selections=selections,
+        non_interactive=non_interactive,
+        save_report=save_report,
+        display_report=display_report,
+        save_path=save_path,
+    )
 
 
 if __name__ == "__main__":
