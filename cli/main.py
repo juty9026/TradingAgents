@@ -1384,11 +1384,6 @@ def analyze(
         help="Directory for saved reports. Defaults to ./reports/{ticker}_{timestamp}.",
     ),
 ):
-    if clear_checkpoints:
-        from tradingagents.graph.checkpointer import clear_all_checkpoints
-        n = clear_all_checkpoints(DEFAULT_CONFIG["data_cache_dir"])
-        console.print(f"[yellow]Cleared {n} checkpoint(s).[/yellow]")
-
     if save_path is not None and not save_report:
         raise typer.BadParameter("--save-path cannot be used with --no-save-report.")
 
@@ -1403,6 +1398,11 @@ def analyze(
             )
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
+
+    if clear_checkpoints:
+        from tradingagents.graph.checkpointer import clear_all_checkpoints
+        n = clear_all_checkpoints(DEFAULT_CONFIG["data_cache_dir"])
+        console.print(f"[yellow]Cleared {n} checkpoint(s).[/yellow]")
 
     run_analysis(
         checkpoint=checkpoint,

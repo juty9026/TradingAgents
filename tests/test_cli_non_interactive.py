@@ -246,6 +246,59 @@ def test_save_path_cannot_be_used_when_report_saving_is_disabled(monkeypatch):
     assert calls == []
 
 
+def test_clear_checkpoints_waits_for_valid_non_interactive_args(monkeypatch):
+    cleared_paths = []
+    analysis_calls = []
+
+    def fake_clear_all_checkpoints(path):
+        cleared_paths.append(path)
+        return 1
+
+    def fake_run_analysis(**kwargs):
+        analysis_calls.append(kwargs)
+
+    monkeypatch.setattr(
+        "tradingagents.graph.checkpointer.clear_all_checkpoints",
+        fake_clear_all_checkpoints,
+    )
+    monkeypatch.setattr(cli_main, "run_analysis", fake_run_analysis)
+
+    result = runner.invoke(cli_main.app, ["--clear-checkpoints", "--non-interactive"])
+
+    assert result.exit_code != 0
+    assert "--ticker is required when --non-interactive is used" in result.output
+    assert cleared_paths == []
+    assert analysis_calls == []
+
+
+def test_clear_checkpoints_runs_after_valid_non_interactive_args(monkeypatch):
+    cleared_paths = []
+    analysis_calls = []
+
+    def fake_clear_all_checkpoints(path):
+        cleared_paths.append(path)
+        return 1
+
+    def fake_run_analysis(**kwargs):
+        analysis_calls.append(kwargs)
+
+    monkeypatch.setattr(
+        "tradingagents.graph.checkpointer.clear_all_checkpoints",
+        fake_clear_all_checkpoints,
+    )
+    monkeypatch.setattr(cli_main, "run_analysis", fake_run_analysis)
+
+    result = runner.invoke(
+        cli_main.app,
+        ["--clear-checkpoints", "--non-interactive", "--ticker", "SPY"],
+    )
+
+    assert result.exit_code == 0
+    assert cleared_paths == [DEFAULT_CONFIG["data_cache_dir"]]
+    assert len(analysis_calls) == 1
+    assert analysis_calls[0]["selections"]["ticker"] == "SPY"
+
+
 def test_help_exposes_non_interactive_options_without_llm_overrides():
     result = runner.invoke(cli_main.app, ["--help"])
 
