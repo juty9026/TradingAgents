@@ -186,3 +186,93 @@ def test_codex_oauth_profile_defaults_and_env_overrides(monkeypatch):
     assert codex_oauth_reasoning_effort(config, "quick") == "medium"
     assert codex_oauth_reasoning_effort(config, "deep") == "minimal"
     assert codex_oauth_service_tier(config) == "priority"
+
+
+from langchain_core.messages import HumanMessage, SystemMessage
+from pydantic import BaseModel
+
+
+@pytest.mark.unit
+def test_codex_chat_payload_uses_instructions_stream_and_sanitizes_params():
+    from tradingagents.llm_clients.openai_client import CodexOAuthChatOpenAI
+
+    client = CodexOAuthChatOpenAI(
+        model="gpt-5.5",
+        api_key="placeholder",
+        base_url="https://chatgpt.com/backend-api/codex",
+        use_responses_api=True,
+        streaming=True,
+        service_tier="priority",
+    )
+
+    payload = client._get_request_payload(
+        [SystemMessage(content="System prompt"), HumanMessage(content="Analyze SPY")],
+        temperature=0.2,
+        max_tokens=100,
+        service_tier="priority",
+        metadata={"run": "test"},
+        prompt_cache_retention="24h",
+    )
+
+    assert payload["instructions"] == "System prompt"
+    assert payload["stream"] is True
+    assert payload["store"] is False
+    assert payload["service_tier"] == "priority"
+    assert payload["input"] == [
+        {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "Analyze SPY"}],
+        }
+    ]
+    assert "max_output_tokens" not in payload
+    assert "temperature" not in payload
+    assert "metadata" not in payload
+    assert "prompt_cache_retention" not in payload
+
+
+@pytest.mark.unit
+def test_codex_chat_payload_keeps_tools_for_bind_tools():
+    from tradingagents.llm_clients.openai_client import CodexOAuthChatOpenAI
+
+    def get_price(ticker: str) -> str:
+        """Return the current price for a ticker."""
+        return "100"
+
+    client = CodexOAuthChatOpenAI(
+        model="gpt-5.5",
+        api_key="placeholder",
+        base_url="https://chatgpt.com/backend-api/codex",
+        use_responses_api=True,
+        streaming=True,
+    )
+    bound = client.bind_tools([get_price])
+    payload = bound.bound._get_request_payload(
+        [HumanMessage(content="Use the tool for SPY.")],
+        **bound.kwargs,
+    )
+
+    assert payload["tools"][0]["type"] == "function"
+    assert payload["tools"][0]["name"] == "get_price"
+    assert payload.get("tool_choice") in (None, "auto")
+
+
+@pytest.mark.unit
+def test_codex_structured_output_uses_function_calling_binding():
+    from tradingagents.llm_clients.openai_client import CodexOAuthChatOpenAI
+
+    class Decision(BaseModel):
+        rating: str
+        rationale: str
+
+    client = CodexOAuthChatOpenAI(
+        model="gpt-5.5",
+        api_key="placeholder",
+        base_url="https://chatgpt.com/backend-api/codex",
+        use_responses_api=True,
+        streaming=True,
+    )
+
+    structured = client.with_structured_output(Decision)
+
+    assert structured is not None

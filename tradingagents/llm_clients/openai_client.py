@@ -1,5 +1,5 @@
 import os
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 
 from langchain_core.messages import AIMessage
 from langchain_openai import ChatOpenAI
@@ -30,6 +30,124 @@ class NormalizedChatOpenAI(ChatOpenAI):
         if method is None:
             method = "function_calling"
         return super().with_structured_output(schema, method=method, **kwargs)
+
+
+_CODEX_UNSUPPORTED_PARAMS = (
+    "max_output_tokens",
+    "metadata",
+    "prompt_cache_retention",
+    "temperature",
+)
+
+
+def _content_to_text(content: Any) -> str:
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts = []
+        for item in content:
+            if isinstance(item, str):
+                parts.append(item)
+            elif isinstance(item, Mapping):
+                text = item.get("text")
+                if isinstance(text, str):
+                    parts.append(text)
+        return "\n".join(part for part in parts if part)
+    return str(content) if content is not None else ""
+
+
+def _normalize_codex_content(content: Any, *, assistant: bool = False) -> Any:
+    text_type = "output_text" if assistant else "input_text"
+    if isinstance(content, str):
+        return [{"type": text_type, "text": content}]
+    if not isinstance(content, list):
+        text = str(content) if content is not None else ""
+        return [{"type": text_type, "text": text}]
+
+    normalized = []
+    for block in content:
+        if isinstance(block, str):
+            normalized.append({"type": text_type, "text": block})
+            continue
+        if not isinstance(block, Mapping):
+            continue
+        block_type = block.get("type")
+        if block_type == "text":
+            normalized.append({"type": text_type, "text": block.get("text", "")})
+        elif block_type == "image_url":
+            image_url = block.get("image_url")
+            url = image_url.get("url") if isinstance(image_url, Mapping) else image_url
+            entry = {"type": "input_image", "image_url": str(url or "")}
+            detail = image_url.get("detail") if isinstance(image_url, Mapping) else None
+            if detail:
+                entry["detail"] = detail
+            normalized.append(entry)
+        elif block_type in {
+            "input_text",
+            "input_image",
+            "input_file",
+            "output_text",
+            "refusal",
+        }:
+            normalized.append(dict(block))
+    return normalized
+
+
+def _normalize_codex_responses_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    payload = dict(payload)
+    instructions = []
+    normalized_input = []
+
+    for item in payload.get("input") or []:
+        if not isinstance(item, Mapping):
+            normalized_input.append(item)
+            continue
+        item_dict = dict(item)
+        role = item_dict.get("role")
+        if role in {"system", "developer"}:
+            text = _content_to_text(item_dict.get("content"))
+            if text:
+                instructions.append(text)
+            continue
+        if item_dict.get("type") == "message" or role in {"user", "assistant"}:
+            item_dict["type"] = "message"
+            item_dict["content"] = _normalize_codex_content(
+                item_dict.get("content"),
+                assistant=(role == "assistant"),
+            )
+        normalized_input.append(item_dict)
+
+    existing_instructions = payload.get("instructions")
+    if instructions:
+        payload["instructions"] = "\n\n".join(instructions)
+    elif not existing_instructions:
+        payload["instructions"] = "You are a helpful assistant."
+
+    payload["input"] = normalized_input or [
+        {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": " "}],
+        }
+    ]
+    payload["stream"] = True
+    payload["store"] = False
+
+    for key in _CODEX_UNSUPPORTED_PARAMS:
+        payload.pop(key, None)
+
+    if "tool_choice" not in payload and payload.get("tools"):
+        payload["tool_choice"] = "auto"
+
+    return payload
+
+
+class CodexOAuthChatOpenAI(NormalizedChatOpenAI):
+    """ChatOpenAI variant that targets the ChatGPT Codex Responses backend."""
+
+    def _get_request_payload(self, input_, *, stop=None, **kwargs):
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+        return _normalize_codex_responses_payload(payload)
 
 
 def _input_to_messages(input_: Any) -> list:
