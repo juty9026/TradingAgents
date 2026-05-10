@@ -33,9 +33,11 @@ class NormalizedChatOpenAI(ChatOpenAI):
 
 
 _CODEX_UNSUPPORTED_PARAMS = (
+    "ls_structured_output_format",
     "max_output_tokens",
     "metadata",
     "prompt_cache_retention",
+    "structured_output_format",
     "temperature",
 )
 
@@ -117,9 +119,11 @@ def _normalize_codex_responses_payload(payload: dict[str, Any]) -> dict[str, Any
             )
         normalized_input.append(item_dict)
 
-    existing_instructions = payload.get("instructions")
-    if instructions:
-        payload["instructions"] = "\n\n".join(instructions)
+    existing_instructions = _content_to_text(payload.get("instructions"))
+    if existing_instructions or instructions:
+        payload["instructions"] = "\n\n".join(
+            part for part in [existing_instructions, *instructions] if part
+        )
     elif not existing_instructions:
         payload["instructions"] = "You are a helpful assistant."
 

@@ -192,6 +192,20 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel
 
 
+class Decision(BaseModel):
+    rating: str
+    rationale: str
+
+
+def _structured_payload(client, schema: type[BaseModel]):
+    structured = client.with_structured_output(schema)
+    binding = structured.first
+    return binding.bound._get_request_payload(
+        [HumanMessage(content="Make a decision.")],
+        **binding.kwargs,
+    )
+
+
 @pytest.mark.unit
 def test_codex_chat_payload_uses_instructions_stream_and_sanitizes_params():
     from tradingagents.llm_clients.openai_client import CodexOAuthChatOpenAI
@@ -232,6 +246,46 @@ def test_codex_chat_payload_uses_instructions_stream_and_sanitizes_params():
 
 
 @pytest.mark.unit
+def test_codex_chat_payload_preserves_explicit_and_message_instructions():
+    from tradingagents.llm_clients.openai_client import _normalize_codex_responses_payload
+
+    payload = _normalize_codex_responses_payload(
+        {
+            "instructions": "Explicit instructions",
+            "input": [
+                {
+                    "type": "message",
+                    "role": "system",
+                    "content": "System prompt",
+                },
+                {
+                    "type": "message",
+                    "role": "developer",
+                    "content": [{"type": "text", "text": "Developer prompt"}],
+                },
+                {
+                    "type": "message",
+                    "role": "user",
+                    "content": "Analyze SPY",
+                },
+            ],
+        }
+    )
+
+    assert (
+        payload["instructions"]
+        == "Explicit instructions\n\nSystem prompt\n\nDeveloper prompt"
+    )
+    assert payload["input"] == [
+        {
+            "type": "message",
+            "role": "user",
+            "content": [{"type": "input_text", "text": "Analyze SPY"}],
+        }
+    ]
+
+
+@pytest.mark.unit
 def test_codex_chat_payload_keeps_tools_for_bind_tools():
     from tradingagents.llm_clients.openai_client import CodexOAuthChatOpenAI
 
@@ -261,10 +315,6 @@ def test_codex_chat_payload_keeps_tools_for_bind_tools():
 def test_codex_structured_output_uses_function_calling_binding():
     from tradingagents.llm_clients.openai_client import CodexOAuthChatOpenAI
 
-    class Decision(BaseModel):
-        rating: str
-        rationale: str
-
     client = CodexOAuthChatOpenAI(
         model="gpt-5.5",
         api_key="placeholder",
@@ -273,6 +323,11 @@ def test_codex_structured_output_uses_function_calling_binding():
         streaming=True,
     )
 
-    structured = client.with_structured_output(Decision)
+    payload = _structured_payload(client, Decision)
 
-    assert structured is not None
+    assert "ls_structured_output_format" not in payload
+    assert "structured_output_format" not in payload
+    assert payload["tools"][0]["type"] == "function"
+    assert payload["tools"][0]["name"] == "Decision"
+    assert payload["tools"][0]["parameters"]["properties"]["rating"]["type"] == "string"
+    assert payload["tools"][0]["parameters"]["properties"]["rationale"]["type"] == "string"
