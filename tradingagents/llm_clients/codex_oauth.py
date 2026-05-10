@@ -132,15 +132,13 @@ def normalize_codex_service_tier(value: str | None) -> str | None:
     if value is None:
         return None
     normalized = value.strip().lower()
-    if not normalized or normalized in {"normal", "off", "none"}:
+    if not normalized:
         return None
     if normalized in {"fast", "priority"}:
         return "priority"
-    if normalized == "flex":
-        return "flex"
     raise ValueError(
         "Unsupported Codex OAuth service tier "
-        f"{value!r}; expected one of: priority, fast, flex, normal, off."
+        f"{value!r}; expected one of: priority, fast."
     )
 
 

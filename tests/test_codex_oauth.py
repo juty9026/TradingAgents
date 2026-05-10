@@ -149,9 +149,18 @@ def test_codex_oauth_profile_defaults_and_env_overrides(monkeypatch):
     assert codex_oauth_reasoning_effort(config, "deep") == "high"
     assert normalize_codex_service_tier(config["codex_oauth_service_tier"]) == "priority"
     assert normalize_codex_service_tier("fast") == "priority"
+    for unsupported_tier in ("flex", "normal", "off", "none"):
+        with pytest.raises(ValueError):
+            normalize_codex_service_tier(unsupported_tier)
 
+    monkeypatch.setenv("TRADINGAGENTS_CODEX_OAUTH_QUICK_MODEL", "gpt-5.5-mini")
+    monkeypatch.setenv("TRADINGAGENTS_CODEX_OAUTH_DEEP_MODEL", "gpt-5.6")
     monkeypatch.setenv("TRADINGAGENTS_CODEX_OAUTH_QUICK_REASONING_EFFORT", "medium")
+    monkeypatch.setenv("TRADINGAGENTS_CODEX_OAUTH_DEEP_REASONING_EFFORT", "minimal")
     monkeypatch.setenv("TRADINGAGENTS_CODEX_OAUTH_SERVICE_TIER", "fast")
 
+    assert codex_oauth_role_model(config, "quick") == "gpt-5.5-mini"
+    assert codex_oauth_role_model(config, "deep") == "gpt-5.6"
     assert codex_oauth_reasoning_effort(config, "quick") == "medium"
+    assert codex_oauth_reasoning_effort(config, "deep") == "minimal"
     assert codex_oauth_service_tier(config) == "priority"
