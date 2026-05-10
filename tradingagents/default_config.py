@@ -15,6 +15,11 @@ DEFAULT_CONFIG = {
     "llm_provider": "openai",
     "deep_think_llm": "gpt-5.4",
     "quick_think_llm": "gpt-5.4-mini",
+    "codex_oauth_deep_think_llm": os.getenv("TRADINGAGENTS_CODEX_OAUTH_DEEP_MODEL", "gpt-5.5"),
+    "codex_oauth_quick_think_llm": os.getenv("TRADINGAGENTS_CODEX_OAUTH_QUICK_MODEL", "gpt-5.5"),
+    "codex_oauth_deep_reasoning_effort": os.getenv("TRADINGAGENTS_CODEX_OAUTH_DEEP_REASONING_EFFORT", "high"),
+    "codex_oauth_quick_reasoning_effort": os.getenv("TRADINGAGENTS_CODEX_OAUTH_QUICK_REASONING_EFFORT", "low"),
+    "codex_oauth_service_tier": os.getenv("TRADINGAGENTS_CODEX_OAUTH_SERVICE_TIER", "priority"),
     # When None, each provider's client falls back to its own default endpoint
     # (api.openai.com for OpenAI, generativelanguage.googleapis.com for Gemini, ...).
     # The CLI overrides this per provider when the user picks one. Keeping a

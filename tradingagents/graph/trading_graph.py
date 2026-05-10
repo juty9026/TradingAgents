@@ -14,6 +14,12 @@ logger = logging.getLogger(__name__)
 from langgraph.prebuilt import ToolNode
 
 from tradingagents.llm_clients import create_llm_client
+from tradingagents.llm_clients.codex_oauth import (
+    codex_oauth_reasoning_effort,
+    codex_oauth_requested,
+    codex_oauth_role_model,
+    codex_oauth_service_tier,
+)
 
 from tradingagents.agents import *
 from tradingagents.default_config import DEFAULT_CONFIG
@@ -76,24 +82,27 @@ class TradingAgentsGraph:
         os.makedirs(self.config["data_cache_dir"], exist_ok=True)
         os.makedirs(self.config["results_dir"], exist_ok=True)
 
-        # Initialize LLMs with provider-specific thinking configuration
-        llm_kwargs = self._get_provider_kwargs()
+        # Initialize LLMs with provider-specific thinking configuration.
+        # Codex OAuth can use the same model with different quick/deep reasoning effort.
+        deep_kwargs = self._get_provider_kwargs("deep")
+        quick_kwargs = self._get_provider_kwargs("quick")
 
-        # Add callbacks to kwargs if provided (passed to LLM constructor)
+        # Add callbacks to kwargs if provided (passed to LLM constructor).
         if self.callbacks:
-            llm_kwargs["callbacks"] = self.callbacks
+            deep_kwargs["callbacks"] = self.callbacks
+            quick_kwargs["callbacks"] = self.callbacks
 
         deep_client = create_llm_client(
             provider=self.config["llm_provider"],
-            model=self.config["deep_think_llm"],
+            model=self._get_llm_model("deep"),
             base_url=self.config.get("backend_url"),
-            **llm_kwargs,
+            **deep_kwargs,
         )
         quick_client = create_llm_client(
             provider=self.config["llm_provider"],
-            model=self.config["quick_think_llm"],
+            model=self._get_llm_model("quick"),
             base_url=self.config.get("backend_url"),
-            **llm_kwargs,
+            **quick_kwargs,
         )
 
         self.deep_thinking_llm = deep_client.get_llm()
@@ -130,7 +139,18 @@ class TradingAgentsGraph:
         self.graph = self.workflow.compile()
         self._checkpointer_ctx = None
 
-    def _get_provider_kwargs(self) -> Dict[str, Any]:
+    def _get_llm_model(self, role: str) -> str:
+        """Return the model for a quick or deep thinking role."""
+        provider = self.config.get("llm_provider", "").lower()
+        if provider == "openai" and codex_oauth_requested():
+            return codex_oauth_role_model(self.config, role)
+        if role == "deep":
+            return self.config["deep_think_llm"]
+        if role == "quick":
+            return self.config["quick_think_llm"]
+        raise ValueError(f"Unknown LLM role: {role}")
+
+    def _get_provider_kwargs(self, role: str = "deep") -> Dict[str, Any]:
         """Get provider-specific kwargs for LLM client creation."""
         kwargs = {}
         provider = self.config.get("llm_provider", "").lower()
@@ -141,9 +161,17 @@ class TradingAgentsGraph:
                 kwargs["thinking_level"] = thinking_level
 
         elif provider == "openai":
-            reasoning_effort = self.config.get("openai_reasoning_effort")
-            if reasoning_effort:
-                kwargs["reasoning_effort"] = reasoning_effort
+            if codex_oauth_requested():
+                kwargs["reasoning_effort"] = codex_oauth_reasoning_effort(
+                    self.config, role
+                )
+                service_tier = codex_oauth_service_tier(self.config)
+                if service_tier:
+                    kwargs["service_tier"] = service_tier
+            else:
+                reasoning_effort = self.config.get("openai_reasoning_effort")
+                if reasoning_effort:
+                    kwargs["reasoning_effort"] = reasoning_effort
 
         elif provider == "anthropic":
             effort = self.config.get("anthropic_effort")
