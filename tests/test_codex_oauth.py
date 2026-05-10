@@ -113,6 +113,28 @@ def test_codex_oauth_loader_rejects_expired_access_token(monkeypatch, tmp_path):
 
 
 @pytest.mark.unit
+def test_codex_oauth_loader_rejects_non_object_auth_payload(monkeypatch, tmp_path):
+    from tradingagents.llm_clients.codex_oauth import (
+        CodexOAuthCredentialError,
+        load_codex_oauth_credentials,
+    )
+
+    codex_home = tmp_path / "codex"
+    codex_home.mkdir()
+    auth_path = codex_home / "auth.json"
+    auth_path.write_text("[]")
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+
+    with pytest.raises(CodexOAuthCredentialError) as exc_info:
+        load_codex_oauth_credentials()
+
+    message = str(exc_info.value)
+    assert str(auth_path) in message
+    assert "codex login" in message
+    assert "OPENAI_API_KEY fallback is disabled" in message
+
+
+@pytest.mark.unit
 def test_codex_oauth_requested_only_for_explicit_source(monkeypatch):
     from tradingagents.llm_clients.codex_oauth import codex_oauth_requested
 

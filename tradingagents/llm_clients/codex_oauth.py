@@ -55,6 +55,10 @@ def load_codex_oauth_credentials(
         raise _credential_error(
             auth_path, "The Codex OAuth auth file could not be read."
         ) from exc
+    if not isinstance(payload, dict):
+        raise _credential_error(
+            auth_path, "The Codex OAuth auth file must contain a JSON object."
+        )
 
     auth_mode = payload.get("auth_mode")
     if isinstance(auth_mode, str) and auth_mode and auth_mode != "chatgpt":
