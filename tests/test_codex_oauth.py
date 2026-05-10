@@ -331,3 +331,68 @@ def test_codex_structured_output_uses_function_calling_binding():
     assert payload["tools"][0]["name"] == "Decision"
     assert payload["tools"][0]["parameters"]["properties"]["rating"]["type"] == "string"
     assert payload["tools"][0]["parameters"]["properties"]["rationale"]["type"] == "string"
+
+
+@pytest.mark.unit
+def test_openai_client_prefers_codex_oauth_over_openai_api_key(monkeypatch, tmp_path):
+    from tradingagents.llm_clients.openai_client import OpenAIClient
+
+    access_token = _jwt_with_exp(int(time.time()) + 3600)
+    auth_path = _write_codex_auth(tmp_path / "codex", access_token=access_token)
+    monkeypatch.setenv("CODEX_HOME", str(auth_path.parent))
+    monkeypatch.setenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", "codex_oauth")
+    monkeypatch.setenv("OPENAI_API_KEY", "api-key-that-must-not-win")
+
+    llm = OpenAIClient(
+        "gpt-5.5",
+        provider="openai",
+        service_tier="priority",
+        api_key="caller-api-key-that-must-not-win",
+    ).get_llm()
+
+    assert llm.__class__.__name__ == "CodexOAuthChatOpenAI"
+    assert llm.openai_api_key.get_secret_value() == access_token
+    assert str(llm.openai_api_base).rstrip("/") == "https://chatgpt.com/backend-api/codex"
+    assert llm.default_headers["ChatGPT-Account-Id"] == "acct_test"
+    assert llm.streaming is True
+    assert llm.service_tier == "priority"
+
+
+@pytest.mark.unit
+def test_openai_client_codex_oauth_missing_auth_hard_fails(monkeypatch, tmp_path):
+    from tradingagents.llm_clients.codex_oauth import CodexOAuthCredentialError
+    from tradingagents.llm_clients.openai_client import OpenAIClient
+
+    codex_home = tmp_path / "missing-codex"
+    monkeypatch.setenv("CODEX_HOME", str(codex_home))
+    monkeypatch.setenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", "codex_oauth")
+    monkeypatch.setenv("OPENAI_API_KEY", "api-key-that-must-not-win")
+
+    with pytest.raises(CodexOAuthCredentialError) as exc_info:
+        OpenAIClient("gpt-5.5", provider="openai").get_llm()
+
+    message = str(exc_info.value)
+    assert str(codex_home / "auth.json") in message
+    assert "codex login" in message
+    assert "OPENAI_API_KEY fallback is disabled" in message
+
+
+@pytest.mark.unit
+@pytest.mark.parametrize("credential_source", [None, "api_key"])
+def test_openai_client_regular_openai_path_is_unchanged(
+    monkeypatch,
+    credential_source,
+):
+    from tradingagents.llm_clients.openai_client import OpenAIClient
+
+    if credential_source is None:
+        monkeypatch.delenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", raising=False)
+    else:
+        monkeypatch.setenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", credential_source)
+    monkeypatch.setenv("OPENAI_API_KEY", "regular-api-key")
+
+    llm = OpenAIClient("gpt-5.5", provider="openai").get_llm()
+
+    assert llm.__class__.__name__ == "NormalizedChatOpenAI"
+    assert llm.openai_api_key.get_secret_value() == "regular-api-key"
+    assert llm.use_responses_api is True

@@ -5,6 +5,12 @@ from langchain_core.messages import AIMessage
 from langchain_openai import ChatOpenAI
 
 from .base_client import BaseLLMClient, normalize_content
+from .codex_oauth import (
+    CODEX_RESPONSES_BASE_URL,
+    codex_oauth_default_headers,
+    codex_oauth_requested,
+    load_codex_oauth_credentials,
+)
 from .validators import validate_model
 
 
@@ -227,8 +233,9 @@ class DeepSeekChatOpenAI(NormalizedChatOpenAI):
 
 # Kwargs forwarded from user config to ChatOpenAI
 _PASSTHROUGH_KWARGS = (
-    "timeout", "max_retries", "reasoning_effort",
+    "timeout", "max_retries", "reasoning_effort", "service_tier",
     "api_key", "callbacks", "http_client", "http_async_client",
+    "default_headers",
 )
 
 # Provider base URLs and API key env vars
@@ -265,6 +272,7 @@ class OpenAIClient(BaseLLMClient):
         """Return configured ChatOpenAI instance."""
         self.warn_if_unknown_model()
         llm_kwargs = {"model": self.model}
+        use_codex_oauth = self.provider == "openai" and codex_oauth_requested()
 
         # Provider-specific base URL and auth. An explicit base_url on the
         # client (e.g. a corporate proxy) takes precedence over the
@@ -288,12 +296,24 @@ class OpenAIClient(BaseLLMClient):
 
         # Native OpenAI: use Responses API for consistent behavior across
         # all model families. Third-party providers use Chat Completions.
-        if self.provider == "openai":
+        if use_codex_oauth:
+            credentials = load_codex_oauth_credentials()
+            llm_kwargs["base_url"] = CODEX_RESPONSES_BASE_URL
+            llm_kwargs["api_key"] = credentials.access_token
+            llm_kwargs["default_headers"] = codex_oauth_default_headers(credentials)
+            llm_kwargs["use_responses_api"] = True
+            llm_kwargs["streaming"] = True
+        elif self.provider == "openai":
             llm_kwargs["use_responses_api"] = True
 
         # DeepSeek's thinking-mode quirks live in their own subclass so the
         # base NormalizedChatOpenAI stays free of provider-specific branches.
-        chat_cls = DeepSeekChatOpenAI if self.provider == "deepseek" else NormalizedChatOpenAI
+        if use_codex_oauth:
+            chat_cls = CodexOAuthChatOpenAI
+        elif self.provider == "deepseek":
+            chat_cls = DeepSeekChatOpenAI
+        else:
+            chat_cls = NormalizedChatOpenAI
         return chat_cls(**llm_kwargs)
 
     def validate_model(self) -> bool:
