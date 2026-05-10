@@ -148,6 +148,21 @@ export OPENROUTER_API_KEY=...      # OpenRouter
 export ALPHA_VANTAGE_API_KEY=...   # Alpha Vantage
 ```
 
+#### OpenAI via Codex OAuth
+
+TradingAgents can use an existing Codex login as an explicit OpenAI credential source. Run `codex login` first so Codex creates a valid auth file, then opt in with environment variables:
+
+```bash
+export TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE=codex_oauth
+export TRADINGAGENTS_CODEX_OAUTH_QUICK_MODEL=gpt-5.5
+export TRADINGAGENTS_CODEX_OAUTH_DEEP_MODEL=gpt-5.5
+export TRADINGAGENTS_CODEX_OAUTH_QUICK_REASONING_EFFORT=low
+export TRADINGAGENTS_CODEX_OAUTH_DEEP_REASONING_EFFORT=high
+export TRADINGAGENTS_CODEX_OAUTH_SERVICE_TIER=priority
+```
+
+When `TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE=codex_oauth` is set, OpenAI provider runs use Codex OAuth credentials and ignore `OPENAI_API_KEY`. Missing or expired Codex credentials fail fast instead of falling back to an API key. See [docs/codex-oauth.md](docs/codex-oauth.md) for troubleshooting, credential file locations, and current limitations.
+
 For enterprise providers (e.g. Azure OpenAI, AWS Bedrock), copy `.env.enterprise.example` to `.env.enterprise` and fill in your credentials.
 
 For local models, configure Ollama with `llm_provider: "ollama"` in your config.
