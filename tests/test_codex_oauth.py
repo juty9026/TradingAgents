@@ -1,6 +1,7 @@
 import base64
 import json
 import time
+import warnings
 from pathlib import Path
 
 import pytest
@@ -343,12 +344,14 @@ def test_openai_client_prefers_codex_oauth_over_openai_api_key(monkeypatch, tmp_
     monkeypatch.setenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", "codex_oauth")
     monkeypatch.setenv("OPENAI_API_KEY", "api-key-that-must-not-win")
 
-    llm = OpenAIClient(
-        "gpt-5.5",
-        provider="openai",
-        service_tier="priority",
-        api_key="caller-api-key-that-must-not-win",
-    ).get_llm()
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        llm = OpenAIClient(
+            "gpt-5.5",
+            provider="openai",
+            service_tier="priority",
+            api_key="caller-api-key-that-must-not-win",
+        ).get_llm()
 
     assert llm.__class__.__name__ == "CodexOAuthChatOpenAI"
     assert llm.openai_api_key.get_secret_value() == access_token
@@ -356,6 +359,12 @@ def test_openai_client_prefers_codex_oauth_over_openai_api_key(monkeypatch, tmp_
     assert llm.default_headers["ChatGPT-Account-Id"] == "acct_test"
     assert llm.streaming is True
     assert llm.service_tier == "priority"
+    assert not [
+        warning
+        for warning in caught
+        if issubclass(warning.category, RuntimeWarning)
+        and "known model list" in str(warning.message)
+    ]
 
 
 @pytest.mark.unit
@@ -391,7 +400,7 @@ def test_openai_client_regular_openai_path_is_unchanged(
         monkeypatch.setenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", credential_source)
     monkeypatch.setenv("OPENAI_API_KEY", "regular-api-key")
 
-    llm = OpenAIClient("gpt-5.5", provider="openai").get_llm()
+    llm = OpenAIClient("gpt-5.4", provider="openai").get_llm()
 
     assert llm.__class__.__name__ == "NormalizedChatOpenAI"
     assert llm.openai_api_key.get_secret_value() == "regular-api-key"

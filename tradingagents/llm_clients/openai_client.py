@@ -270,9 +270,10 @@ class OpenAIClient(BaseLLMClient):
 
     def get_llm(self) -> Any:
         """Return configured ChatOpenAI instance."""
-        self.warn_if_unknown_model()
-        llm_kwargs = {"model": self.model}
         use_codex_oauth = self.provider == "openai" and codex_oauth_requested()
+        if not use_codex_oauth:
+            self.warn_if_unknown_model()
+        llm_kwargs = {"model": self.model}
 
         # Provider-specific base URL and auth. An explicit base_url on the
         # client (e.g. a corporate proxy) takes precedence over the
