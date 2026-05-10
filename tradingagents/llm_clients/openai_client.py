@@ -233,7 +233,7 @@ class DeepSeekChatOpenAI(NormalizedChatOpenAI):
 
 # Kwargs forwarded from user config to ChatOpenAI
 _PASSTHROUGH_KWARGS = (
-    "timeout", "max_retries", "reasoning_effort", "service_tier",
+    "timeout", "max_retries", "reasoning_effort",
     "api_key", "callbacks", "http_client", "http_async_client",
     "default_headers",
 )
@@ -293,6 +293,8 @@ class OpenAIClient(BaseLLMClient):
         for key in _PASSTHROUGH_KWARGS:
             if key in self.kwargs:
                 llm_kwargs[key] = self.kwargs[key]
+        if self.provider == "openai" and "service_tier" in self.kwargs:
+            llm_kwargs["service_tier"] = self.kwargs["service_tier"]
 
         # Native OpenAI: use Responses API for consistent behavior across
         # all model families. Third-party providers use Chat Completions.

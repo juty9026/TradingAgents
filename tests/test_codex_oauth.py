@@ -396,3 +396,21 @@ def test_openai_client_regular_openai_path_is_unchanged(
     assert llm.__class__.__name__ == "NormalizedChatOpenAI"
     assert llm.openai_api_key.get_secret_value() == "regular-api-key"
     assert llm.use_responses_api is True
+
+
+@pytest.mark.unit
+def test_openai_client_does_not_forward_service_tier_to_deepseek(monkeypatch):
+    from tradingagents.llm_clients.openai_client import OpenAIClient
+
+    monkeypatch.delenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", raising=False)
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "deepseek-api-key")
+
+    llm = OpenAIClient(
+        "deepseek-chat",
+        provider="deepseek",
+        service_tier="priority",
+    ).get_llm()
+    payload = llm._get_request_payload([HumanMessage(content="hi")])
+
+    assert llm.__class__.__name__ == "DeepSeekChatOpenAI"
+    assert "service_tier" not in payload
