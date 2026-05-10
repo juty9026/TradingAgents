@@ -414,3 +414,61 @@ def test_openai_client_does_not_forward_service_tier_to_deepseek(monkeypatch):
 
     assert llm.__class__.__name__ == "DeepSeekChatOpenAI"
     assert "service_tier" not in payload
+
+
+@pytest.mark.unit
+def test_trading_graph_uses_codex_oauth_role_models_and_reasoning(monkeypatch):
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+
+    monkeypatch.setenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", "codex_oauth")
+    config = DEFAULT_CONFIG.copy()
+    config.update(
+        {
+            "llm_provider": "openai",
+            "deep_think_llm": "gpt-5.4",
+            "quick_think_llm": "gpt-5.4-mini",
+            "codex_oauth_deep_think_llm": "gpt-5.5",
+            "codex_oauth_quick_think_llm": "gpt-5.5",
+            "codex_oauth_deep_reasoning_effort": "high",
+            "codex_oauth_quick_reasoning_effort": "low",
+            "codex_oauth_service_tier": "priority",
+        }
+    )
+    graph = object.__new__(TradingAgentsGraph)
+    graph.config = config
+
+    assert graph._get_llm_model("deep") == "gpt-5.5"
+    assert graph._get_llm_model("quick") == "gpt-5.5"
+    assert graph._get_provider_kwargs("deep") == {
+        "reasoning_effort": "high",
+        "service_tier": "priority",
+    }
+    assert graph._get_provider_kwargs("quick") == {
+        "reasoning_effort": "low",
+        "service_tier": "priority",
+    }
+
+
+@pytest.mark.unit
+def test_trading_graph_regular_openai_model_and_reasoning_unchanged(monkeypatch):
+    from tradingagents.default_config import DEFAULT_CONFIG
+    from tradingagents.graph.trading_graph import TradingAgentsGraph
+
+    monkeypatch.delenv("TRADINGAGENTS_OPENAI_CREDENTIAL_SOURCE", raising=False)
+    config = DEFAULT_CONFIG.copy()
+    config.update(
+        {
+            "llm_provider": "openai",
+            "deep_think_llm": "gpt-5.4",
+            "quick_think_llm": "gpt-5.4-mini",
+            "openai_reasoning_effort": "medium",
+        }
+    )
+    graph = object.__new__(TradingAgentsGraph)
+    graph.config = config
+
+    assert graph._get_llm_model("deep") == "gpt-5.4"
+    assert graph._get_llm_model("quick") == "gpt-5.4-mini"
+    assert graph._get_provider_kwargs("deep") == {"reasoning_effort": "medium"}
+    assert graph._get_provider_kwargs("quick") == {"reasoning_effort": "medium"}
