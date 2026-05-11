@@ -179,7 +179,30 @@ Launch the interactive CLI:
 tradingagents          # installed command
 python -m cli.main     # alternative: run directly from source
 ```
-You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
+
+Run without prompts for scripts, smoke checks, or saved analyses:
+```bash
+tradingagents --non-interactive --ticker SPY
+```
+
+Save a shallow one-analyst report without displaying the full report:
+```bash
+tradingagents --non-interactive \
+  --ticker SPY \
+  --research-depth shallow \
+  --analysts market \
+  --no-display-report \
+  --save-path reports/manual-spy-non-interactive
+```
+
+Interactive runs prompt for report output language. Non-interactive runs use the configured default output language when `--output-language` is omitted; the current default is English. Override the report language explicitly when needed:
+```bash
+tradingagents --non-interactive --ticker SPY --output-language Korean
+```
+
+Codex OAuth credential and model settings do not change report language.
+
+In interactive mode, you will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
 
 <p align="center">
   <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">

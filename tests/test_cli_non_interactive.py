@@ -77,6 +77,23 @@ def test_parse_analysis_date_rejects_future_dates():
         cli_main._parse_analysis_date("2026-05-10", today=today)
 
 
+def test_parse_output_language_defaults_to_configured_default():
+    assert cli_main._parse_output_language(None) == "English"
+
+
+def test_parse_output_language_accepts_custom_language_and_trims():
+    assert cli_main._parse_output_language(" Korean ") == "Korean"
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_parse_output_language_rejects_empty_values(value):
+    with pytest.raises(
+        ValueError,
+        match="--output-language must be a non-empty language name",
+    ):
+        cli_main._parse_output_language(value)
+
+
 def test_build_non_interactive_selections_requires_ticker():
     today = dt.date(2026, 5, 9)
 
@@ -116,6 +133,21 @@ def test_build_non_interactive_selections_uses_safe_defaults():
     assert selections["deep_thinker"] == "gpt-5.4"
     assert selections["openai_reasoning_effort"] == "medium"
     assert selections["output_language"] == "English"
+
+
+def test_build_non_interactive_selections_accepts_output_language_override():
+    today = dt.date(2026, 5, 9)
+
+    selections = cli_main.build_non_interactive_selections(
+        ticker="spy",
+        analysis_date=None,
+        analysts=None,
+        research_depth=None,
+        output_language=" Korean ",
+        today=today,
+    )
+
+    assert selections["output_language"] == "Korean"
 
 
 from pathlib import Path
@@ -221,6 +253,55 @@ def test_non_interactive_cli_forwards_overrides(monkeypatch):
     assert calls[0]["save_path"] == Path("reports/toyota")
 
 
+def test_non_interactive_cli_forwards_output_language(monkeypatch):
+    calls = []
+
+    def fake_run_analysis(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(cli_main, "run_analysis", fake_run_analysis)
+
+    result = runner.invoke(
+        cli_main.app,
+        [
+            "--non-interactive",
+            "--ticker",
+            "SPY",
+            "--output-language",
+            "Korean",
+        ],
+    )
+
+    assert result.exit_code == 0
+    assert len(calls) == 1
+    assert calls[0]["selections"]["output_language"] == "Korean"
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_non_interactive_cli_rejects_empty_output_language(value, monkeypatch):
+    calls = []
+
+    def fake_run_analysis(**kwargs):
+        calls.append(kwargs)
+
+    monkeypatch.setattr(cli_main, "run_analysis", fake_run_analysis)
+
+    result = runner.invoke(
+        cli_main.app,
+        [
+            "--non-interactive",
+            "--ticker",
+            "SPY",
+            "--output-language",
+            value,
+        ],
+    )
+
+    assert result.exit_code != 0
+    assert "--output-language must be a non-empty language name" in result.output
+    assert calls == []
+
+
 def test_save_path_cannot_be_used_when_report_saving_is_disabled(monkeypatch):
     calls = []
 
@@ -252,6 +333,7 @@ def test_save_path_cannot_be_used_when_report_saving_is_disabled(monkeypatch):
         (["--no-save-report"], "--no-save-report requires --non-interactive"),
         (["--no-display-report"], "--no-display-report requires --non-interactive"),
         (["--save-path", "reports/spy"], "--save-path requires --non-interactive"),
+        (["--output-language", "Korean"], "--output-language requires --non-interactive"),
     ],
 )
 def test_report_control_options_require_non_interactive(args, expected_error, monkeypatch):
@@ -334,6 +416,7 @@ def test_help_exposes_non_interactive_options_without_llm_overrides():
     assert "--save-report" in result.output
     assert "--display-report" in result.output
     assert "--save-path" in result.output
+    assert "--output-language" in result.output
     assert "--llm-provider" not in result.output
     assert "--quick-think-llm" not in result.output
     assert "--deep-think-llm" not in result.output

@@ -83,7 +83,7 @@ Codex OAuth support targets the core TradingAgents analysis flow rather than ful
 
 TradingAgents consumes an existing Codex login only. It does not create logins, refresh tokens, use OS keychains, or add `.env.local` loading behavior.
 
-Codex OAuth does not change the output language. Interactive runs can prompt for report language, and non-interactive runs use the configured default language unless a separate language option is added later.
+Codex OAuth does not change the output language. Report language is controlled by TradingAgents run inputs and configuration: interactive runs can prompt for report language, and non-interactive runs use the configured default language unless `--output-language` overrides it. The current configured default output language is English.
 
 ## Known Follow-Ups
 
