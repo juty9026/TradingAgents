@@ -202,7 +202,7 @@ tradingagents --non-interactive --ticker SPY --output-language Korean
 
 Codex OAuth credential and model settings do not change report language.
 
-You will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
+In interactive mode, you will see a screen where you can select your desired tickers, analysis date, LLM provider, research depth, and more.
 
 <p align="center">
   <img src="assets/cli/cli_init.png" width="100%" style="display: inline-block; margin: 0 2%;">
