@@ -105,12 +105,24 @@ def _parse_analysis_date(
     return parsed_date.isoformat()
 
 
+def _parse_output_language(value: str | None) -> str:
+    if value is None:
+        return DEFAULT_CONFIG["output_language"]
+
+    output_language = value.strip()
+    if not output_language:
+        raise ValueError("--output-language must be a non-empty language name.")
+
+    return output_language
+
+
 def build_non_interactive_selections(
     *,
     ticker: str | None,
     analysis_date: str | None,
     analysts: str | None,
     research_depth: str | int | None,
+    output_language: str | None = None,
     today: datetime.date | None = None,
 ) -> dict[str, str | int | Sequence[AnalystType] | None]:
     if ticker is None or not ticker.strip():
@@ -126,7 +138,7 @@ def build_non_interactive_selections(
         "shallow_thinker": DEFAULT_CONFIG["quick_think_llm"],
         "deep_thinker": DEFAULT_CONFIG["deep_think_llm"],
         "openai_reasoning_effort": DEFAULT_CONFIG.get("openai_reasoning_effort"),
-        "output_language": DEFAULT_CONFIG["output_language"],
+        "output_language": _parse_output_language(output_language),
     }
 
 
@@ -1368,6 +1380,11 @@ def analyze(
         "--research-depth",
         help="Research depth for non-interactive mode: shallow, medium, deep, 1, 3, or 5. Defaults to shallow.",
     ),
+    output_language: Optional[str] = typer.Option(
+        None,
+        "--output-language",
+        help="Report output language for non-interactive mode. Defaults to the configured output_language.",
+    ),
     save_report: bool = typer.Option(
         True,
         "--save-report/--no-save-report",
@@ -1396,6 +1413,9 @@ def analyze(
     if not non_interactive and save_path is not None:
         raise typer.BadParameter("--save-path requires --non-interactive.")
 
+    if not non_interactive and output_language is not None:
+        raise typer.BadParameter("--output-language requires --non-interactive.")
+
     selections = None
     if non_interactive:
         try:
@@ -1404,6 +1424,7 @@ def analyze(
                 analysis_date=analysis_date,
                 analysts=analysts,
                 research_depth=research_depth,
+                output_language=output_language,
             )
         except ValueError as exc:
             raise typer.BadParameter(str(exc)) from exc
