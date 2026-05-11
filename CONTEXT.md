@@ -76,7 +76,15 @@ _Avoid_: Stock, asset, symbol
 - The initial **Codex OAuth LLM Profile** uses `gpt-5.5` for both quick and deep thinking, with default reasoning effort `low` for quick thinking and `high` for deep thinking.
 - **Codex OAuth LLM Profile** model and reasoning effort settings should be easy to override without changing code.
 - **Fast Service Tier** is enabled in the initial **Codex OAuth LLM Profile** by sending the Codex backend request value `priority`, not the literal value `fast`.
+- User-facing examples should prefer the canonical **Fast Service Tier** backend value `priority`; detailed documentation may mention `fast` only as an accepted alias that maps to `priority`.
 - **Codex OAuth LLM Profile** is configured through environment variables and internal config keys, not through additional **Interactive Run** or **Non-Interactive Run** inputs.
+- User-facing setup documentation should present **Codex OAuth Support** as an optional OpenAI **LLM Credential Source** path under API setup, not as a separate top-level LLM provider.
+- **Codex OAuth Support** setup documentation owns credential and profile configuration, while **Interactive Run** and **Non-Interactive Run** documentation own execution examples.
+- The detailed user guide for **Codex OAuth Support** is `docs/codex-oauth.md`, with the OpenAI **LLM Credential Source** boundary explained in the guide body rather than encoded in the filename.
+- Documentation should mention Codex SSE parser robustness as a known follow-up for **Codex OAuth Support**, not as a general troubleshooting failure mode.
+- Because **Codex OAuth Support** is a local personal integration that is not expected to ship in an upstream official release, release-managed files such as `CHANGELOG.md` should not document it unless that release policy changes.
+- `CODEX_HOME` is part of **Codex OAuth Credential** discovery documentation, not part of the normal **Codex OAuth LLM Profile** example block.
+- **Codex OAuth Support** limitations documentation should describe user-facing behavior boundaries, not backend endpoint/header internals or account product assumptions.
 - **Research Depth** maps to fixed internal round counts: shallow is 1, medium is 3, and deep is 5.
 
 ## Example dialogue
